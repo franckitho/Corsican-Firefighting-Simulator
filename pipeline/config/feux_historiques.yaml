@@ -1,0 +1,153 @@
+# Feux réels rejoués par le simulateur : python -I -m firesim_pipeline.rejeu <identifiant>
+#
+# nom_court : nom affiché sur le bouton du panneau, dans Unreal
+# depart    : heure locale du départ, arrondie à l'heure (la météo est horaire)
+# point     : latitude, longitude du départ, placé d'après la presse et le contour observé
+# duree_h   : durée simulée ; le simulateur ne connaît pas encore la lutte, on s'arrête quand le feu a été contenu
+# vegetation_vivante : scénario de sécheresse pour la végétation vivante (le bois mort suit la météo réelle)
+# contour   : zone brûlée cartographiée par EFFIS (Copernicus) sur images satellite : année et identifiant
+# observations : surfaces annoncées pendant le feu (heure locale : hectares)
+# vegetation_apres_feu : la hauteur de la végétation (images de 2019) montre déjà la zone brûlée, rase : le feu est
+#   rejoué, mais ne compte pas dans la calibration, qui y trouverait d'avance la réponse
+
+olmeta-2017:
+  nom: Olmeta-di-Tuda (Nebbio)
+  nom_court: Olmeta-di-Tuda
+  depart: "2017-07-24T10:00"
+  point: [42.60834, 9.36602]
+  duree_h: 24
+  vegetation_vivante: extreme
+  contour: {annee: 2017, id: 13531}
+  vegetation_apres_feu: true
+  observations:
+    "2017-07-25T09:00": 1500
+  notes: >-
+    Parti « lundi matin » d'Olmeta-di-Tuda, heure exacte inconnue (10 h retenu) ; routes D62 et D82 coupées.
+    Le feu a filé vers l'est sur un front de 4 km, jusqu'à Ficabruna et Furiani, pendant la nuit.
+    1 500 ha le mardi matin, contenu le mardi après-midi, 1 800 ha au premier bilan du mercredi ;
+    EFFIS cartographie 2 424 ha le 27 juillet. Météo : ERA5 seulement (avant les archives AROME).
+  sources:
+    - https://france3-regions.franceinfo.fr/corse/haute-corse/olmeta-di-tuda-feu-n-est-circonscrit-maitrise-1303027.html
+    - https://www.sudradio.fr/faits-divers/haute-corse-200-soldats-du-feu-luttent-contre-lincendie-dolmeta-di-tuda
+    - https://www.corsenetinfos.corsica/Biguglia-Le-territoire-de-la-commune-balaye-par-des-flammes-devastatrices_a28516.html
+
+ogliastro-2017:
+  nom: Ogliastro et Sisco (Cap Corse)
+  nom_court: Ogliastro
+  depart: "2017-08-11T01:00"
+  point: [42.80484, 9.34455]
+  duree_h: 24
+  vegetation_vivante: extreme
+  contour: {annee: 2017, id: 13857}
+  vegetation_apres_feu: true
+  observations:
+    "2017-08-11T07:30": 100
+    "2017-08-11T22:30": 1500
+  notes: >-
+    Déclaré à 0 h 45 (0 h 50 selon la préfecture) à Ogliastro, sur la côte ouest du Cap Corse, en bordure de la route
+    départementale ; « attisé par le vent », il a basculé sur le versant est jusqu'à Pietracorbara et Sisco dans la
+    journée. Point placé sur la D80, au bord ouest du contour (vent d'ouest d'ERA5). Plus de 100 ha à 7 h 30, plus
+    de 1 500 ha le soir, 1 800 ha au premier bilan du lendemain ; EFFIS cartographie 1 490 ha.
+  sources:
+    - https://www.corsenetinfos.corsica/Feu-important-a-Ogliastro-dans-le-Cap-Corse-50-personnes-evacuees_a28815.html
+    - https://www.corsenetinfos.corsica/1-800-hectares-ravages-entre-Ogliastro-et-Pietracorbara-Le-Cap-Corse-devaste_a28839.html
+    - https://feuxdeforet.fr/2017/08/11/pietracorbara-sisco-2b/
+
+santo-pietro-2022:
+  nom: Santo-Pietro-di-Tenda (Nebbio)
+  nom_court: Santo-Pietro
+  depart: "2022-08-01T09:00"
+  point: [42.61031, 9.24484]
+  duree_h: 24
+  vegetation_vivante: extreme
+  contour: {annee: 2022, id: 208521}
+  observations:
+    "2022-08-02T08:00": 450
+  notes: >-
+    Deux mises à feu vers 8 h 40 « à l'ouest du moulin de Salti », dans un secteur inaccessible aux engins ;
+    environ 450 ha de maquis dans la journée, stable le mardi matin, fixé le mardi soir. Point placé dans la zone
+    brûlée au plus près du moulin (2,6 km au sud-ouest). EFFIS (commune de San-Gavino-di-Tenda) : 490 ha.
+    Météo : ERA5 seulement (avant les archives AROME), vent très faible.
+  sources:
+    - https://www.corsenetinfos.corsica/Incendie-de-Santo-Pietro-di-Tenda-450-hectares-brules-le-feu-est-stable_a66127.html
+    - https://www.corsenetinfos.corsica/Incendie-a-Santo-Pietro-di-Tenda-le-feu-fixe-450-hectares-brules_a66141.html
+    - https://feuxdeforet.fr/2022/08/01/santo-pietro-di-tenda-2b/
+
+saint-florent-2025:
+  nom: Saint-Florent, Fromentica (Nebbio)
+  nom_court: Saint-Florent
+  depart: "2025-10-05T10:00"
+  point: [42.6682, 9.29088]
+  duree_h: 12
+  vegetation_vivante: tres_sec
+  contour: {annee: 2025, id: 282974}
+  observations:
+    "2025-10-05T18:00": 220
+  notes: >-
+    Premier des deux feux du 5 octobre 2025 : parti peu après 10 h au lieu-dit Fromentica, sur une colline près
+    de la D81, sous un libecciu en rafales ; il a progressé vers le sud et menacé la route Saint-Florent – Oletta.
+    220 ha à 18 h, 226 ha au final. Point placé à 130 m de Fromentica. EFFIS (commune d'Oletta) : 216 ha.
+    Végétation vivante « très sèche » : début d'automne.
+  sources:
+    - https://www.feuxdeforet.fr/2025/10/05/haute-corse-un-feu-en-cours-a-deja-brule-200-hectares-pres-de-saint-florent-et-oletta/
+    - https://www.feuxdeforet.fr/2025/10/05/oletta-2b-4/
+
+oletta-2025:
+  nom: Oletta, lac de Padula (Nebbio)
+  nom_court: Oletta
+  depart: "2025-10-05T13:00"
+  point: [42.62857, 9.32874]
+  duree_h: 12
+  vegetation_vivante: tres_sec
+  contour: {annee: 2025, id: 282975}
+  observations:
+    "2025-10-05T18:00": 160
+  notes: >-
+    Second feu du 5 octobre 2025, déclaré en début d'après-midi à Oletta près du lac de Padula, en maquis et
+    collines ; front encore très actif le soir. 160 ha à 18 h, 210 ha au final. Point placé à la pointe nord-ouest
+    du contour, côté lac et au vent (vent de nord-nord-ouest d'AROME). EFFIS (commune d'Olmeta-di-Tuda) : 202 ha.
+  sources:
+    - https://www.feuxdeforet.fr/2025/10/05/haute-corse-un-feu-en-cours-a-deja-brule-200-hectares-pres-de-saint-florent-et-oletta/
+    - https://www.feuxdeforet.fr/2025/10/05/oletta-2b-4/
+
+biguglia-2026:
+  nom: Biguglia et Furiani
+  nom_court: Biguglia
+  depart: "2026-07-25T15:00"
+  point: [42.62091, 9.40907]
+  duree_h: 24
+  vegetation_vivante: extreme
+  contour: {annee: 2026, id: 572362}
+  observations:
+    "2026-07-25T16:36": 3.5
+    "2026-07-26T20:00": 160
+  notes: >-
+    Déclaré le samedi après-midi (alerte à 15 h 46) sur les hauteurs de Biguglia et Furiani, lieu exact non publié :
+    point placé à la pointe sud-est du contour, au vent (vent de sud-est d'AROME). 3 à 4 ha à 16 h 36, 160 ha le
+    dimanche soir, fixé le lundi soir à environ 170 ha. EFFIS : 184 ha.
+  sources:
+    - https://www.corsenetinfos.corsica/Deux-incendies-mobilisent-d-importants-moyens-a-Oletta-et-Biguglia_a91880.html
+    - https://www.corsenetinfos.corsica/Biguglia-160-hectares-parcourus-par-les-flammes_a91897.html
+    - https://www.feuxdeforet.fr/haute-corse-2B/furiani-25-07-2026-5628/
+
+cagnano-2026:
+  nom: Cagnano (Cap Corse)
+  nom_court: Cagnano
+  depart: "2026-08-29T14:00"
+  point: [42.87655, 9.45547]
+  duree_h: 9
+  vegetation_vivante: extreme
+  contour: {annee: 2026, id: 658558}
+  observations:
+    "2026-08-29T16:30": 12
+    "2026-08-29T17:30": 45
+    "2026-08-29T19:00": 100
+    "2026-08-29T23:00": 130
+  notes: >-
+    Déclaré vers 14 h en bordure de la RD 132 (point placé dans la zone brûlée, à 33 m de la route), il a monté
+    la pente vers le sud jusqu'à la crête de Pietracorbara. 10 à 15 ha à 16 h 30, 40 à 50 ha à 17 h 30,
+    environ 100 ha à 19 h, 130 ha à 23 h ; fixé le lendemain à 109 ha. EFFIS cartographie 121 ha.
+  sources:
+    - https://www.corsenetinfos.corsica/Incendie-a-Cagnanu-une-centaine-d-hectares-parcourus_a92401.html
+    - https://latele.ch/articles/incendie-dans-le-cap-corse-130-hectares-de-vegetation-parcourus
+    - https://feuxdeforet.fr/haute-corse-2B/cagnano-29-08-2026-11310/

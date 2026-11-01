@@ -1,0 +1,76 @@
+# Traduction de la végétation en modèles de combustible Scott & Burgan (2005),
+# le jeu de 40 modèles standard utilisé avec Rothermel (FARSITE, FlamMap, BehavePlus).
+#
+# HYPOTHÈSES À CALIBRER : aucune carte de combustible « prête pour Rothermel »
+# n'existe pour la Corse. Les choix ci-dessous sont un point de départ raisonnable
+# pour un climat méditerranéen sec ; on les ajustera en rejouant des feux réels.
+
+# Code du modèle -> libellé. 0 = hors de l'île (mer).
+models:
+  0:   {code: "-",  name: "Hors zone (mer)"}
+  91:  {code: NB1,  name: "Zone urbaine"}
+  92:  {code: NB2,  name: "Neige / glace"}
+  93:  {code: NB3,  name: "Culture irriguée"}
+  98:  {code: NB8,  name: "Eau"}
+  99:  {code: NB9,  name: "Roche / sol nu"}
+  101: {code: GR1,  name: "Herbe rase clairsemée"}
+  102: {code: GR2,  name: "Herbe sèche, charge faible"}
+  122: {code: GS2,  name: "Herbe et arbustes, charge moyenne"}
+  145: {code: SH5,  name: "Maquis, charge forte"}
+  147: {code: SH7,  name: "Maquis haut, charge très forte"}
+  165: {code: TU5,  name: "Forêt avec sous-bois arbustif dense"}
+  182: {code: TL2,  name: "Litière de feuillus, charge faible"}
+  183: {code: TL3,  name: "Litière de conifères, charge moyenne"}
+  186: {code: TL6,  name: "Litière de feuillus, charge moyenne"}
+  188: {code: TL8,  name: "Litière d'aiguilles longues (pins)"}
+
+# BD Forêt v2 (champ code_tfv) -> modèle. Prioritaire là où elle existe.
+bdforet:
+  FF0: 122        # forêt fermée sans couvert arboré (coupe, zone déjà brûlée)
+  FF1-00: 165     # feuillus en îlots
+  FF1-00-00: 165  # mélange de feuillus (chêne vert, arbousier…) : maquis arboré
+  FF1-09-09: 182  # hêtre : montagne, humide
+  FF1-10-10: 186  # châtaignier
+  FF1-49-49: 165  # autre feuillu
+  FF1G01-01: 186  # chênes décidus
+  FF1G06-06: 165  # chênes sempervirents (chêne vert, chêne-liège) avec maquis
+  FF2-00: 183     # conifères en îlots
+  FF2-00-00: 183  # mélange de conifères
+  FF2-51-51: 165  # pin maritime : sous-bois de maquis très inflammable
+  FF2-57-57: 165  # pin d'Alep
+  FF2-64-64: 183  # douglas
+  FF2-80-80: 188  # mélange de pins
+  FF2-81-81: 188  # autre pin
+  FF2-91-91: 183  # autre conifère
+  FF2G53-53: 188  # pin laricio : futaies d'altitude, litière d'aiguilles
+  FF2G61-61: 183  # sapin, épicéa
+  FF31: 165       # mixte à feuillus prépondérants
+  FF32: 165       # mixte à conifères prépondérants
+  FO0: 122        # forêt ouverte sans couvert arboré
+  FO1: 145        # forêt ouverte de feuillus : le maquis entre les arbres domine
+  FO2: 145        # forêt ouverte de conifères
+  FO3: 145        # forêt ouverte mixte
+  FP: 182         # peupleraie
+  LA4: 145        # lande = maquis. SH7 pour le maquis haut : la carte de hauteur ne voit pas les arbustes
+  LA6: 102        # formation herbacée
+bdforet_default: 165
+
+# Forêts fermées dont le couvert d'arbres mesuré (étape « canopy ») reste sous celui d'une forêt fermée : maquis
+# arboré ou forêt claire, où le maquis entre les arbres porte le feu. Traitées comme les forêts ouvertes (FO1 à FO3).
+foret_claire:
+  modeles: [165]   # sous-bois de forêt fermée (TU5)
+  couvert_min: 40  # couvert d'arbres d'au moins 5 m (%) d'une forêt fermée, au sens de la BD Forêt
+  modele: 145      # SH5
+
+# ESA WorldCover 2021 (classe) -> modèle. Utilisé là où la BD Forêt n'a rien.
+worldcover:
+  10: 165   # couvert arboré
+  20: 145   # arbustes : maquis
+  30: 102   # prairie
+  40: 101   # culture (chaume, friche : brûle l'été)
+  50: 91    # bâti
+  60: 99    # sol nu, végétation clairsemée (roche d'altitude)
+  70: 92    # neige
+  80: 98    # eau
+  90: 101   # zone humide herbacée
+  100: 99   # mousses, lichens

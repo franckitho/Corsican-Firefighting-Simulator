@@ -1,0 +1,21 @@
+data/
+pipeline/.venv/
+__pycache__/
+*.pyc
+runs/
+sim/build/
+tools/windninja/
+unreal/Binaries/
+unreal/Intermediate/
+unreal/Saved/
+unreal/DerivedDataCache/
+unreal/Plugins/*/Binaries/
+unreal/Plugins/*/Intermediate/
+unreal/.vs/
+unreal/*.sln
+unreal/*.slnx
+unreal/cesium-request-cache.sqlite*
+# Contient les jetons d'accès Cesium ion en clair ; recréé par « Connect to Cesium ion » dans l'éditeur.
+unreal/Content/CesiumSettings/
+# Anciennes copies locales du projet.
+unreal 5.8*/

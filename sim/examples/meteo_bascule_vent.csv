@@ -1,0 +1,6 @@
+# Météo heure par heure : chaque ligne vaut jusqu'à la suivante.
+# heure, vent_kmh (à 10 m), vent_de_deg (d'où vient le vent), humidités en % : 1 h, 10 h, 100 h, herbe, ligneux
+heure,vent_kmh,vent_de_deg,m1h,m10h,m100h,herbe,ligneux
+0,45,225,3,4,5,30,60
+3,30,270,4,5,6,30,60
+4,50,315,4,5,6,30,60

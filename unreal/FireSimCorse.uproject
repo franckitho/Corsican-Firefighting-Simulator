@@ -1,0 +1,31 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "{EA204A93-4489-D81A-3B66-6D9F95FFF386}",
+	"Category": "",
+	"Description": "Simulateur de propagation de feux de foret en Corse",
+	"Modules": [
+		{
+			"Name": "FireSimCorse",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "CesiumForUnreal",
+			"Enabled": true
+		},
+		{
+			"Name": "FireSim",
+			"Enabled": true
+		},
+		{
+			"Name": "PythonScriptPlugin",
+			"Enabled": true
+		},
+		{
+			"Name": "EditorScriptingUtilities",
+			"Enabled": true
+		}
+	]
+}

@@ -1,0 +1,32 @@
+# Coupures linéaires (rivières, routes) : largeur de bande sans combustible, en mètres.
+# La simulation décidera si le feu la franchit selon la hauteur des flammes.
+# HYPOTHÈSES À CALIBRER.
+
+rivers:
+  # BD TOPO, troncon_hydrographique.classe_de_largeur
+  widths:
+    "Entre 0 et 5 m": 3
+    "Entre 5 et 15 m": 10
+    "Entre 15 et 50 m": 30
+    "Plus de 50 m": 60
+  default_width: 3
+  # Un ruisseau intermittent est à sec en été : seul le lit de cailloux fait coupure.
+  intermittent_factor: 0.5
+
+roads:
+  # Largeur par défaut quand largeur_de_chaussee est vide, selon BD TOPO troncon_de_route.nature
+  widths:
+    "Type autoroutier": 20
+    "Route à 2 chaussées": 14
+    "Route à 1 chaussée": 5
+    "Bretelle": 5
+    "Rond-point": 8
+    "Route empierrée": 4
+    "Chemin": 3
+    "Piste cyclable": 2
+    "Sentier": 1
+  # Natures ignorées (pas de coupure au sol)
+  excluded: ["Escalier", "Bac ou liaison maritime"]
+
+# Surfaces d'eau (BD TOPO surface_hydrographique.nature) qui ne comptent pas comme eau libre
+water_excluded_natures: ["Marais"]
