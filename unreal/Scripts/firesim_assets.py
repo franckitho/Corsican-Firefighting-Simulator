@@ -96,6 +96,58 @@ def create_overlay_material():
     unreal.log(f"FireSim : matériau {path} créé")
 
 
+def _fresh_material(name):
+    path = f"{MATERIAL_DIR}/{name}"
+    if assets.does_asset_exist(path):
+        material = assets.load_asset(path)
+        while expressions := mel.get_material_expressions(material):
+            for expression in expressions:
+                mel.delete_material_expression(material, expression)
+    else:
+        material = unreal.AssetToolsHelpers.get_asset_tools().create_asset(
+            name, MATERIAL_DIR, unreal.Material, unreal.MaterialFactoryNew())
+    return material, path
+
+
+def create_aircraft_material():
+    """Avions : les couleurs de la livrée sont celles des sommets du maillage."""
+    material, path = _fresh_material("M_FireAircraft")
+    colors = node(material, unreal.MaterialExpressionVertexColor, -400, 0)
+    roughness = node(material, unreal.MaterialExpressionConstant, -400, 200, r=0.4)
+    if not mel.connect_material_property(colors, "", unreal.MaterialProperty.MP_BASE_COLOR):
+        raise RuntimeError("connexion impossible vers la couleur de base")
+    if not mel.connect_material_property(roughness, "", unreal.MaterialProperty.MP_ROUGHNESS):
+        raise RuntimeError("connexion impossible vers la rugosité")
+    mel.recompile_material(material)
+    assets.save_asset(path)
+    unreal.log(f"FireSim : matériau {path} créé")
+
+
+def create_drop_material():
+    """Gouttes des largages : eau ou retardant, translucides. La scène a l'exposition d'un plein soleil réel, où une couleur
+    émise ordinaire paraîtrait noire : on compense l'exposition pour afficher la couleur telle quelle."""
+    material, path = _fresh_material("M_FireDrop")
+    material.set_editor_property("blend_mode", unreal.BlendMode.BLEND_TRANSLUCENT)
+    material.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
+    # Les gouttes sont un seul maillage répété : sans cet usage déclaré, le moteur les rend avec le matériau par défaut
+    material.set_editor_property("used_with_instanced_static_meshes", True)
+    color = node(material, unreal.MaterialExpressionVectorParameter, -400, 0,
+                 parameter_name="Color", default_value=unreal.LinearColor(0.75, 0.88, 1.0, 1.0))
+    opacity = node(material, unreal.MaterialExpressionScalarParameter, -400, 200,
+                   parameter_name="Opacity", default_value=0.6)
+    exposure = node(material, unreal.MaterialExpressionEyeAdaptationInverse, -400, 120)
+    shown = node(material, unreal.MaterialExpressionMultiply, -200, 50)
+    connect(color, "", shown, "A")
+    connect(exposure, "", shown, "B")
+    if not mel.connect_material_property(shown, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR):
+        raise RuntimeError("connexion impossible vers la couleur")
+    if not mel.connect_material_property(opacity, "", unreal.MaterialProperty.MP_OPACITY):
+        raise RuntimeError("connexion impossible vers l'opacité")
+    mel.recompile_material(material)
+    assets.save_asset(path)
+    unreal.log(f"FireSim : matériau {path} créé")
+
+
 def create_map():
     level_editor = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
     actors = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)

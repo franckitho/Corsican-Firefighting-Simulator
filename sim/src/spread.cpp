@@ -1,5 +1,6 @@
 #include "firesim/spread.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdlib>
@@ -15,6 +16,7 @@ namespace {
 
 constexpr float kInf = std::numeric_limits<float>::infinity();
 constexpr double kDeg = std::numbers::pi / 180.0;
+constexpr double kNever = std::numeric_limits<double>::infinity();
 
 // Pas vers l'une des 16 cellules voisines. `via` : pour une diagonale, les deux cellules « coins » ;
 // pour un pas de cavalier (2, 1), les deux cellules que le segment traverse en chemin.
@@ -52,6 +54,71 @@ struct Node {
     float time;
     uint32_t index;
     bool operator>(const Node& o) const { return time > o.time; }
+};
+
+// La lutte, rangée par cellule, et ce que le feu fait aux chantiers de pare-feu pendant le calcul.
+class ActiveTreatments {
+public:
+    explicit ActiveTreatments(std::span<const Treatment> treatments) : sorted_(treatments.begin(), treatments.end()) {
+        std::stable_sort(sorted_.begin(), sorted_.end(), [](const Treatment& a, const Treatment& b) {
+            return a.cell != b.cell ? a.cell < b.cell : a.from_min < b.from_min;
+        });
+        int32_t lines = 0;
+        for (const Treatment& t : sorted_) lines = std::max(lines, t.line + 1);
+        lines_.resize(lines);
+    }
+
+    bool empty() const { return sorted_.empty(); }
+
+    // Heure à laquelle un feu qui se présente à l'heure `time`, avec ces flammes, entre dans la cellule ; par heure de
+    // début, car un largage peut en prolonger un autre.
+    double free_at(size_t cell, double time, double flame_m) const {
+        const auto [first, last] = of(cell);
+        for (auto t = first; t != last; ++t) {
+            if (flame_m > t->max_flame_m || (t->line >= 0 && t->from_min >= lines_[t->line].cut_from)) continue;
+            if (t->from_min <= time && time < t->until_min) time = std::min<double>(t->until_min, time + t->hold_min);
+        }
+        return time;
+    }
+
+    // Un largage sur une cellule qui brûle retarde ce qu'elle était en train d'allumer (`arrival`).
+    double doused_until(size_t cell, double burned_at, double arrival, double flame_m) const {
+        const auto [first, last] = of(cell);
+        for (auto t = first; t != last; ++t) {
+            if (t->line >= 0 || flame_m > t->max_flame_m || t->from_min < burned_at || t->from_min >= arrival) continue;
+            arrival = std::max<double>(arrival, std::min<double>(t->until_min, static_cast<double>(t->from_min) + t->hold_min));
+        }
+        return arrival;
+    }
+
+    void on_burned(size_t cell, float time) {
+        if (empty()) return;
+        const auto [first, last] = of(cell);
+        for (auto t = first; t != last; ++t) {
+            if (t->line < 0) continue;
+            LineOutcome& line = lines_[t->line];
+            if (time < t->from_min) {
+                line.cut_min = std::min(line.cut_min, time);
+                line.cut_from = std::min(line.cut_from, t->from_min);
+            } else if (t->from_min < line.cut_from) {
+                line.breach_min = std::min(line.breach_min, time);
+            }
+        }
+    }
+
+    const std::vector<LineOutcome>& lines() const { return lines_; }
+
+private:
+    std::pair<std::vector<Treatment>::const_iterator, std::vector<Treatment>::const_iterator> of(size_t cell) const {
+        const auto first = std::lower_bound(sorted_.begin(), sorted_.end(), cell,
+                                            [](const Treatment& t, size_t c) { return t.cell < c; });
+        auto last = first;
+        while (last != sorted_.end() && last->cell == cell) ++last;
+        return {first, last};
+    }
+
+    std::vector<Treatment> sorted_;
+    std::vector<LineOutcome> lines_;
 };
 
 }  // namespace
@@ -142,6 +209,7 @@ SpreadResult Simulator::run(const Weather& weather, std::span<const Ignition> ig
         relax(i, static_cast<float>(ignition.time_min));
     }
 
+    ActiveTreatments treatments(options.treatments);
     SpreadResult result;
     result.col_min = g.width;
     result.row_min = g.height;
@@ -155,6 +223,7 @@ SpreadResult Simulator::run(const Weather& weather, std::span<const Ignition> ig
         if (burned_[node.index] || node.time != arrival_[node.index]) continue;  // entrée périmée
         if (node.time > options.duration_min) break;
         burned_[node.index] = 1;
+        treatments.on_burned(node.index, node.time);
 
         if (const size_t p = weather.period_at(node.time); p != period) {
             cond.prepare(weather[p], options, land_.wind ? &*land_.wind : nullptr);
@@ -212,11 +281,27 @@ SpreadResult Simulator::run(const Weather& weather, std::span<const Ignition> ig
             const double rv = ros_in(target);
             if (rv <= 1e-9) continue;
             inverse_sum += 1.0 / rv;
-            relax(target, static_cast<float>(node.time + s.length * cell_ft * weight * inverse_sum));
+            double arrival = node.time + s.length * cell_ft * weight * inverse_sum;
+            if (!treatments.empty()) {
+                arrival = treatments.doused_until(node.index, node.time, arrival, flame_m);
+                // La lutte le retient à son arrivée : mêmes règles de passage, mais pour un temps
+                double free = treatments.free_at(target, arrival, flame_m);
+                if (s.diagonal || s.knight) {
+                    const size_t a = g.index(col + s.via[0][0], row + s.via[0][1]);
+                    const size_t b = g.index(col + s.via[1][0], row + s.via[1][1]);
+                    const double free_a = stops(a) ? kNever : treatments.free_at(a, arrival, flame_m);
+                    const double free_b = stops(b) ? kNever : treatments.free_at(b, arrival, flame_m);
+                    free = std::max(free, s.diagonal ? std::min(free_a, free_b) : std::max(free_a, free_b));
+                }
+                if (free == kNever) continue;
+                arrival = free;
+            }
+            relax(target, static_cast<float>(arrival));
         }
     }
 
     result.area_ha = static_cast<double>(result.cells.size()) * g.res * g.res / 10000.0;
+    result.lines = treatments.lines();
     return result;
 }
 

@@ -29,11 +29,13 @@
 #include "Widgets/Layout/SBox.h"
 
 #include "FireSimPanel.h"
+#include "FireSuppression.h"
 #include "RealWeather.h"
 
 #include <algorithm>
 #include <exception>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "firesim/io.hpp"
@@ -164,6 +166,7 @@ AFireSimulator::AFireSimulator()
 	PrimaryActorTick.bCanEverTick = true;
 	Root = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
 	RootComponent = Root;
+	Suppression = CreateDefaultSubobject<UFireSuppressionComponent>(TEXT("Lutte"));
 	OverlayMaterial = TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/FireSim/M_FireOverlay.M_FireOverlay")));
 	const FDateTime Now = FDateTime::Now();
 	IgnitionTime = FDateTime(Now.GetYear(), Now.GetMonth(), Now.GetDay(), Now.GetHour());
@@ -241,11 +244,22 @@ void AFireSimulator::Simulate()
 	IgniteAtLongitudeLatitude(IgnitionLongitude, IgnitionLatitude);
 }
 
+void AFireSimulator::Recalculate()
+{
+	if (bHasFire)
+	{
+		bKeepDisplayedTime = true;
+		Simulate();
+		bKeepDisplayedTime = false;
+	}
+}
+
 bool AFireSimulator::IgniteAtWorldLocation(const FVector& Location)
 {
 	ACesiumGeoreference* Georeference = ACesiumGeoreference::GetDefaultGeoreferenceForActor(this);
 	const FVector Local = Georeference->GetActorTransform().InverseTransformPosition(Location);
 	const FVector LonLatHeight = Georeference->TransformUnrealPositionToLongitudeLatitudeHeight(Local);
+	Suppression->Reset();  // un autre feu : les ordres donnés pour le précédent ne valent plus
 	return IgniteAtLongitudeLatitude(LonLatHeight.X, LonLatHeight.Y);
 }
 
@@ -264,6 +278,8 @@ bool AFireSimulator::IgniteAtLongitudeLatitude(double Longitude, double Latitude
 
 	FLoadedMap* Map = nullptr;
 	firesim::SpreadResult Result;
+	firesim::SpreadResult FreeResult;  // le même feu sans la lutte, pour comparer
+	bool bFought = false;
 	const double Start = FPlatformTime::Seconds();
 	try
 	{
@@ -278,7 +294,22 @@ bool AFireSimulator::IgniteAtLongitudeLatitude(double Longitude, double Latitude
 		Options.duration_min = DurationMinutes;
 		Options.terrain_wind = bTerrainWind;
 		const firesim::Ignition Ignition{Point.x, Point.y, 0.0};
+		// Pas de vol de nuit : le lever et le coucher du soleil ne comptent que si le feu a une date (météo réelle)
+		std::optional<firesim::Daylight> Daylight;
+		if (bRealWeather)
+		{
+			const double UtcOffset = IgnitionTime.GetMonth() >= 4 && IgnitionTime.GetMonth() <= 10 ? 2.0 : 1.0;
+			Daylight.emplace(IgnitionTime.GetDayOfYear(), IgnitionTime.GetHour() * 60.0 + IgnitionTime.GetMinute(), UtcOffset,
+				firesim::LatLon{Latitude, Longitude});
+		}
+		Options.treatments = Suppression->Prepare(Map->Land, Map->Elevation, Options.breach_factor, Daylight);
+		bFought = !Options.treatments.empty();
 		Result = Map->Simulator->run(Weather, {&Ignition, 1}, Options);
+		if (bFought)
+		{
+			Options.treatments.clear();
+			FreeResult = Map->Simulator->run(Weather, {&Ignition, 1}, Options);
+		}
 	}
 	catch (const std::exception& Error)
 	{
@@ -339,8 +370,9 @@ bool AFireSimulator::IgniteAtLongitudeLatitude(double Longitude, double Latitude
 	FireStartTime = IgnitionTime;
 	UpdateReplayOverlap();
 	ShowFire(Pixels);
+	Suppression->SetResult(Result, bFought ? &FreeResult : nullptr, DurationMinutes);
 	UWorld* World = GetWorld();
-	if (World && World->IsGameWorld())
+	if (World && World->IsGameWorld() && !bKeepDisplayedTime)
 	{
 		DisplayedHours = 0;
 		bPlaying = true;
@@ -429,6 +461,7 @@ void AFireSimulator::HandleGeoreferenceUpdated()
 		PlaceDecal(Decal, FireWindow);
 	}
 	PlaceDecal(ObservedDecal, ObservedWindow);
+	Suppression->PlaceOverlays();
 }
 
 void AFireSimulator::UpdateDisplayedTime()
@@ -607,6 +640,7 @@ bool AFireSimulator::StartReplay(const FString& Id)
 		return false;
 	}
 	ActiveReplay = Index;
+	Suppression->Reset();
 	const FFireReplay& Replay = Replays[Index];
 	bRealWeather = true;
 	IgnitionTime = Replay.Start;
@@ -728,6 +762,7 @@ void AFireSimulator::ClearFire()
 {
 	bHasFire = false;
 	bPlaying = false;
+	Suppression->Reset();
 	ArrivalMinutes.Reset();
 	BurnedCells.Reset();
 	ObservedPrefix.Reset();
@@ -765,13 +800,14 @@ void AFireSimulator::Tick(float DeltaSeconds)
 		{
 			IgniteUnderCursor(*Controller);
 		}
+		Suppression->HandleInput(*Controller);
 	}
 
 	if (bHasFire && bPlaying)
 	{
 		// Durée du feu calculé : le curseur de durée peut avoir bougé depuis
 		const double End = GetSimulatedHours();
-		DisplayedHours = FMath::Min(DisplayedHours + DeltaSeconds * PlaybackSpeed, End);
+		DisplayedHours = FMath::Min(DisplayedHours + DeltaSeconds * Suppression->AdjustSpeed(PlaybackSpeed), End);
 		bPlaying = DisplayedHours < End;
 		UpdateDisplayedTime();
 	}
@@ -798,6 +834,7 @@ void AFireSimulator::CreateInterface(APlayerController& Controller)
 			SNew(SFireSimPanel, this)
 		];
 	Viewport->AddViewportWidgetContent(Interface.ToSharedRef(), 10);
+	Suppression->CreateInterface(*Viewport);
 	ApplyInputMode(Controller);
 }
 

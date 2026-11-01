@@ -9,7 +9,7 @@ le relief, le vent et la météo (modèle de Rothermel), lutte contre le feu, ca
 | 1 | Module de simulation C++ (Rothermel + propagation) | **fait** |
 | 2 | Application Unreal 5 + Cesium | **fait** : terrain IGN sur ion, feu drapé sur le relief, panneau de réglage en jeu |
 | 3 | Météo réelle, vent corrigé par le relief, rejeu de feux historiques | **fait** : 7 feux rejoués (2017 à 2026) ; carte de la végétation corrigée par sa hauteur mesurée, vitesse calibrée (voir « Calibration ») |
-| 4 | Lutte : pare-feu, largages | à faire |
+| 4 | Lutte : pare-feu construits à la vitesse des engins, avions partis de leurs bases réelles | **fait** : effet indicatif, faute de données sur les actions réelles (voir « Étape 4 ») |
 | 5 | Carte de risque (milliers de départs sur le serveur lab) | à faire |
 | 6 | Visuels : flammes, fumée | à faire |
 
@@ -22,7 +22,7 @@ le relief, le vent et la météo (modèle de Rothermel), lutte contre le feu, ca
 - **Météo** : réglages manuels, ou météo réelle via Open-Meteo : prévisions et archives des prévisions de Météo-France
   (AROME, depuis novembre 2022), réanalyse ERA5 avant, pour rejouer des feux réels.
   Vent corrigé par le relief avec WindNinja.
-- **Première version** : timeline et contours horaires, lutte simple (pare-feu, largages sans logistique),
+- **Première version** : timeline et contours horaires, lutte (pare-feu, largages depuis les bases réelles),
   carte de risque. Rendu : couleurs sur le terrain d'abord, flammes et fumée (Niagara) ensuite.
 
 ## Étape 0 — pipeline de données
@@ -397,8 +397,90 @@ Ce qu'il faut garder en tête :
 - **Ogliastro se dégrade**, mais sa végétation est mesurée après le feu et son vent vient d'ERA5 : il ne permet pas de
   conclure dans un sens ou dans l'autre.
 - **Le facteur s'applique à tous les combustibles**, alors que seul le maquis est vraiment mesuré ici : l'herbe et les
-  pinèdes d'altitude ne brûlent presque pas dans ces sept feux. Il réduit aussi l'intensité et les flammes, donc les
-  coupures tiennent mieux. Quand l'étape 4 ajoutera la lutte, il faudra le recalibrer.
+  pinèdes d'altitude ne brûlent presque pas dans ces sept feux. Il réduit aussi l'intensité et les flammes (d'environ
+  30 %), donc les coupures tiennent mieux. Le rejeu ne contient pas la lutte réelle, dont on ignore le détail : le facteur
+  reste celui d'un feu non combattu, et ne serait à revoir que si l'on retrouvait les actions menées sur ces feux.
+
+## Étape 4 — lutte contre le feu
+
+Module `sim/` (`firesim/suppression.hpp`), testé sans Unreal, et panneau « Lutte » en jeu. Les actions partent de
+l'heure affichée : ce qui a déjà brûlé ne change pas, et l'on peut revenir en arrière pour essayer autre chose. Le feu
+est recalculé à chaque ordre, avec et sans la lutte ; ce que la lutte a évité s'affiche en vert sur le terrain.
+
+```bash
+firesim run --ignition 42.61,9.245 --wind 40 --wind-from 90 --duration 12h --out runs/lutte \
+  --firebreak 1,8,4,42.5932,9.2363,42.6182,9.2226 --drop 1,canadair,42.607,9.245,42.612,9.241 --drop 1,dash,42.595,9.235,42.615,9.225
+```
+
+### En jeu
+
+- **Pare-feu** : cliquer le tracé dans le sens du chantier, puis clic droit, Entrée ou « Lancer le chantier » ; retour
+  arrière retire le dernier point. Tirets jaunes : prévu. Blanc : construit. Tirets gris : perdu, le feu a atteint le chantier.
+- **Canadair, Dash** : cliquer le début puis la fin de l'axe. L'avion décolle de sa base et fait autant de passages que
+  nécessaire pour couvrir l'axe. Bleu : eau. Rouge : retardant. Tirets clairs : pas encore largué. « Suivre » place la
+  caméra derrière l'avion.
+- **Avions** : modelés par le code (`Private/FireAircraft.cpp`), aux dimensions réelles. Vus de loin, ils sont grossis
+  pour rester visibles (jusqu'à ×80) ; suivis, ils sont à leur taille réelle.
+- **Lecture** : elle ralentit à ×5 le temps réel pendant un largage en vue (case à décocher), à ×15 derrière un avion.
+
+### Règles
+
+| Moyen | Effet | Passe si |
+|---|---|---|
+| Pare-feu | Arrête le feu, cellule par cellule, une fois la cellule construite | Largeur < 1,5 × longueur de flamme, la règle des routes et des rivières |
+| Eau (Canadair) | Retient le feu 20 min après le largage, puis elle a séché ; retarde aussi ce qu'une lisière en train de brûler allait allumer | Intensité > 2 000 kW/m (environ 2,6 m de flammes) |
+| Retardant (Dash) | Reste actif une fois sec ; retient le feu 1 h à partir du contact | Intensité > 2 000 kW/m |
+
+Un largage **retarde** le feu sans l'arrêter ; seul un pare-feu l'arrête. Si le feu atteint une partie pas encore
+construite, le chantier s'arrête là : le reste de la ligne ne sera pas fait.
+
+**Pare-feu pas instantané** : un bulldozer avance à 1 100 pieds/h (335 m/h) dans le maquis dense en une passe de 4 m,
+1 500 pieds/h ailleurs, 3 000 pieds/h dans l'herbe. Le temps de chantier est multiplié par le nombre de passes
+(largeur / 4 m) et divisé par le nombre d'engins. Au-delà de 55 % de pente, un bulldozer ne monte plus : le chantier
+avance à la vitesse d'une équipe à pied (471 pieds/h), sans changement de largeur.
+
+**Avions, d'après leur base réelle** :
+
+| | Canadair CL-415 (« Pélican ») | Dash 8 Q400MR (« Milan ») |
+|---|---|---|
+| Départ | 2 à Ajaccio (détachement saisonnier), 6 à Nîmes-Garons | 8 à Nîmes-Garons |
+| Croisière | 290 km/h | 560 km/h |
+| Charge | 6 137 L d'eau, écopée en mer : 410 m à 130 km/h, 12 s | 10 000 L de retardant, sur le pélicandrome le plus proche (Ajaccio, Bastia, Calvi, Solenzara) |
+| Bande par passage | 330 m | environ 1 km |
+| Rotation dans le modèle | 7 min près de la mer (annoncé : moins de 8 min) | 24 min (annoncé : 25 min minimum) |
+
+Chaque ordre va à l'avion qui peut larguer le plus tôt. Un Canadair qui rentre peut être rappelé en vol ; un Dash doit
+d'abord se recharger. Pas de vol de nuit : les opérations s'arrêtent au coucher du soleil, calculé pour la date et le
+lieu du feu. Cette règle ne vaut qu'en météo réelle : réglé à la main, le feu n'a pas de date.
+
+### Ce que cela donne
+
+Santo-Pietro 2022, avec une ligne de 3,2 km et 8 m de large posée devant le feu de la 6e heure, ordonnée à la 1re heure :
+
+| Moyens sur la ligne | Ligne complète | Surface à 24 h |
+|---|---|---|
+| Aucun | | 1 846 ha |
+| 1 engin | 25 h après le départ : le feu atteint le chantier à 6,9 h | 1 845 ha |
+| 4 engins | 7,7 h après le départ, à temps | 1 193 ha, soit 653 ha évités |
+
+Le même chiffre sort de l'outil en ligne de commande et du jeu (1 193 ha). Un temps de construction réaliste change tout :
+même ligne, même endroit, et seul le nombre d'engins fait la différence. À l'inverse, sur ce feu, deux Canadair sur 660 m
+ou un Dash sur 2,5 km ne changent presque rien à 24 h (0 et 4 ha) : ils retardent le feu localement, et il les contourne.
+Il faut des largages répétés, et le vrai feu en a reçu plus de 160.
+
+### Ce que cette étape ne dit pas
+
+- **L'efficacité n'est pas validée.** On ignore où ont été posés les lignes et les largages sur les sept feux rejoués : les
+  chiffres ci-dessus montrent le comportement du modèle, pas ce qu'aurait donné une telle action sur le terrain.
+- **Hypothèses sans source** : l'eau retient le feu 20 min ; 1 h de transport des engins ; 15 min de l'ordre au décollage ;
+  6 min de roulage sur le pélicandrome, ajoutées pour retrouver la rotation annoncée du Dash. Le nombre d'avions au sol en Corse
+  change selon les années : un Dash peut aussi être prépositionné à Ajaccio ou à Solenzara, ce que le modèle ne fait pas.
+- **Seuil de 2 000 kW/m et heure de tenue** : Project Aquarius (eucalyptus d'Australie), lu dans un résumé, avec du retardant
+  et non de l'eau. Vitesses des bulldozers : guides américains anciens, lus dans des extraits.
+- **Pare-feu optimistes par grand vent** : pas de sautes de feu, et le facteur ×0,44 réduit les flammes d'environ 30 %.
+  Les sautes de feu, aléatoires par nature, viendront avec l'étape 5.
+- **Pas pris en compte** : vent et état de la mer sur l'écopage et les largages, fumée, hélicoptères, équipes au sol, brûlage
+  tactique, attaque directe des flancs, retardant lessivé par la pluie, autres feux qui occupent les avions.
 
 ## Sources et licences
 
@@ -411,3 +493,5 @@ Ce qu'il faut garder en tête :
 | Hauteur de la végétation | Meta et World Resources Institute, High Resolution Canopy Height Maps (images 2018-2019) | CC BY 4.0 |
 | Météo | Open-Meteo : prévisions Météo-France AROME et ARPEGE, réanalyse ERA5 (Copernicus) | CC BY 4.0 — Weather data by Open-Meteo.com ; Météo-France : Licence Ouverte Etalab 2.0 ; ERA5 : licence Copernicus |
 | Zones brûlées | EFFIS, European Forest Fire Information System (Copernicus Emergency Management Service) | Données Copernicus, libres d'usage avec mention de la source |
+| Lutte : avions et bases | [feuxdeforet.fr](https://www.feuxdeforet.fr/moyens-de-lutte/avions/canadair-cl-415/), [Corse Net Infos](https://www.corsenetinfos.corsica/Incendies-la-polemique-enfle-autour-du-manque-de-moyens-aeriens-disponibles-pour-la-Corse_a91836.html), [pélicandromes](https://carteincendiefrance.fr/moyens-de-lutte/base-de-nimes-garons-et-pelicandromes), [bande de 330 m du CL-415](https://australianaviation.com.au/?p=1436101) | Chiffres cités |
+| Lutte : efficacité | [revue de Plucinski sur les largages](https://bnhcrc.com.au/sites/default/files/2025-03/Review-of-aerial-suppression-effectiveness-literature_final.pdf), [guides de chantier de l'US Forest Service](https://www.fs.usda.gov/Internet/FSE_DOCUMENTS/fseprd566744.pdf) | Chiffres cités, lus dans des extraits |

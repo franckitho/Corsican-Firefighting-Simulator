@@ -8,6 +8,7 @@
 class APlayerController;
 class SWidget;
 class UDecalComponent;
+class UFireSuppressionComponent;
 class UMaterialInstanceDynamic;
 class UMaterialInterface;
 class UTexture2D;
@@ -172,6 +173,11 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Feu")
 	bool StartReplay(const FString& Id);
 
+	// Recalcule le feu sans revenir au début : ce qui a déjà brûlé ne change pas, la lutte s'applique à partir de son heure.
+	void Recalculate();
+
+	UFireSuppressionComponent* GetSuppression() const { return Suppression; }
+
 	// Prépare la carte : géoréférence centrée sur la Corse, terrain IGN depuis Cesium ion,
 	// photo aérienne IGN, soleil, caméra au-dessus du point de départ.
 	UFUNCTION(CallInEditor, BlueprintCallable, Category = "Feu")
@@ -206,6 +212,8 @@ protected:
 	virtual void EndPlay(const EEndPlayReason::Type Reason) override;
 
 private:
+	friend class UFireSuppressionComponent;
+
 	FString ResolvedDataDirectory() const;
 	void StartAerialPhoto();
 	void ShowFire(const TArray<FColor>& Pixels);
@@ -232,6 +240,12 @@ private:
 
 	UPROPERTY(VisibleAnywhere, Category = "Feu")
 	TObjectPtr<USceneComponent> Root;
+
+	// Lutte contre le feu : ordres donnés en jeu, chantiers, avions.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Feu", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UFireSuppressionComponent> Suppression;
+
+	bool bKeepDisplayedTime = false;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UDecalComponent> Decal;

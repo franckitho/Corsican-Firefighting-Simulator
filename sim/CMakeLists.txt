@@ -22,6 +22,7 @@ add_library(firesim_core
   src/landscape.cpp
   src/rothermel.cpp
   src/spread.cpp
+  src/suppression.cpp
   src/weather.cpp
   src/wind_atlas.cpp)
 target_include_directories(firesim_core PUBLIC include)
@@ -36,6 +37,7 @@ if(BUILD_TESTING)
     tests/test_lambert93.cpp
     tests/test_rothermel.cpp
     tests/test_spread.cpp
+    tests/test_suppression.cpp
     tests/test_weather.cpp
     tests/test_wind_atlas.cpp)
   target_link_libraries(firesim_tests PRIVATE firesim_core)

@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <limits>
 #include <map>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -16,6 +17,7 @@
 #include "firesim/io.hpp"
 #include "firesim/lambert93.hpp"
 #include "firesim/spread.hpp"
+#include "firesim/suppression.hpp"
 
 #ifdef _WIN32
 extern "C" __declspec(dllimport) int __stdcall SetConsoleOutputCP(unsigned int);
@@ -47,6 +49,12 @@ firesim run   simule un feu sur la carte et écrit le résultat dans un dossier
   --ros-factor F         multiplie la vitesse, 1 = Rothermel seul ; calibré sur les feux réels [0.44]
   --wind-factor F        multiplie le vent                                    [1]
   --fuel-swap DE=VERS    brûle un modèle de combustible comme un autre (répétable), ex. TU5=SH5
+  --firebreak H,L,N,LAT,LON,LAT,LON...
+                         pare-feu ordonné H heures après le départ, large de L mètres, N engins (répétable) ;
+                         le chantier avance du premier point au dernier
+  --drop H,TYPE,LAT,LON,LAT,LON
+                         largages ordonnés H heures après le départ sur cet axe (répétable) ; TYPE : canadair, dash.
+                         Avec --start, pas de vol de nuit
   --out DOSSIER          dossier de sortie (obligatoire)
 
 firesim point  comportement du feu sur un terrain homogène (Rothermel seul, sans facteur de vitesse)
@@ -128,6 +136,55 @@ Weather parse_weather(const Args& args) {
     return Weather::constant(std::stod(args.get("--wind", "0")), std::stod(args.get("--wind-from", "0")), scenario);
 }
 
+std::vector<std::string> split_commas(const std::string& text) {
+    std::vector<std::string> parts;
+    size_t start = 0;
+    for (size_t comma; (comma = text.find(',', start)) != std::string::npos; start = comma + 1) {
+        parts.push_back(text.substr(start, comma - start));
+    }
+    parts.push_back(text.substr(start));
+    return parts;
+}
+
+FirebreakOrder parse_firebreak(const std::string& text) {
+    const std::vector<std::string> parts = split_commas(text);
+    if (parts.size() < 7 || (parts.size() - 3) % 2 != 0) {
+        throw std::invalid_argument("--firebreak attend H,L,N puis au moins deux points LAT,LON : " + text);
+    }
+    FirebreakOrder order;
+    order.order_min = std::stod(parts[0]) * 60.0;
+    order.width_m = std::stod(parts[1]);
+    order.engines = std::stoi(parts[2]);
+    for (size_t i = 3; i < parts.size(); i += 2) order.path.push_back(to_lambert93({std::stod(parts[i]), std::stod(parts[i + 1])}));
+    return order;
+}
+
+DropOrder parse_drop(const std::string& text) {
+    const std::vector<std::string> parts = split_commas(text);
+    if (parts.size() != 6 || (parts[1] != "canadair" && parts[1] != "dash")) {
+        throw std::invalid_argument("--drop attend H,TYPE,LAT,LON,LAT,LON, avec TYPE = canadair ou dash : " + text);
+    }
+    DropOrder order;
+    order.order_min = std::stod(parts[0]) * 60.0;
+    order.kind = parts[1] == "dash" ? AircraftKind::Dash : AircraftKind::Canadair;
+    order.from = to_lambert93({std::stod(parts[2]), std::stod(parts[3])});
+    order.to = to_lambert93({std::stod(parts[4]), std::stod(parts[5])});
+    return order;
+}
+
+// Lever et coucher du soleil au point de départ, à partir de l'heure locale du départ « 2025-07-20T13:00 ».
+std::optional<Daylight> parse_daylight(const Args& args, const Lambert93& ignition) {
+    if (!args.has("--start")) return std::nullopt;
+    const std::string start = args.get("--start", "");
+    if (start.size() < 16) throw std::invalid_argument("--start attend une date du type 2025-07-20T13:00 : " + start);
+    const int month = std::stoi(start.substr(5, 2)), day = std::stoi(start.substr(8, 2));
+    const int hour = std::stoi(start.substr(11, 2)), minute = std::stoi(start.substr(14, 2));
+    static constexpr int kDaysBefore[] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
+    const int day_of_year = kDaysBefore[std::clamp(month, 1, 12) - 1] + day;
+    const double utc_offset = month >= 4 && month <= 10 ? 2.0 : 1.0;  // heure d'été, à quelques jours près
+    return Daylight(day_of_year, hour * 60.0 + minute, utc_offset, from_lambert93(ignition));
+}
+
 void write_layer(const fs::path& path, const std::vector<float>& data) { io::write_raw<float>(path, data); }
 
 int run_command(const Args& args) {
@@ -167,6 +224,16 @@ int run_command(const Args& args) {
     const auto t0 = clock::now();
     const Landscape land = Landscape::load(landscape_dir);
     const auto t1 = clock::now();
+
+    std::vector<Firebreak> firebreaks;
+    for (const auto& s : args.all("--firebreak")) firebreaks.push_back(plan_firebreak(land, parse_firebreak(s), options.breach_factor));
+    std::vector<DropOrder> drops;
+    for (const auto& s : args.all("--drop")) drops.push_back(parse_drop(s));
+    const std::vector<Flight> flights = drops.empty()
+        ? std::vector<Flight>{}
+        : plan_air_attack(land, drops, parse_daylight(args, {ignitions[0].x, ignitions[0].y}));
+    options.treatments = treatments_of(land.grid, firebreaks, flights);
+
     Simulator sim(land);
     const SpreadResult result = sim.run(weather, ignitions, options);
     const auto t2 = clock::now();
@@ -230,6 +297,33 @@ int run_command(const Args& args) {
         json.begin_object().field("from", find_fuel_model(from)->code).field("to", find_fuel_model(to)->code).end_object();
     }
     json.end_array().end_object();
+    json.key("firebreaks").begin_array();
+    for (size_t i = 0; i < firebreaks.size(); ++i) {
+        const Firebreak& f = firebreaks[i];
+        const LineOutcome& o = result.lines[i];
+        json.begin_object().field("order_min", f.order.order_min).field("width_m", f.order.width_m).field("engines", f.order.engines)
+            .field("length_m", f.length_m).field("start_min", f.start_min).field("finish_min", f.finish_min)
+            .field("holds_flame_m", f.holds_flame_m);
+        if (std::isfinite(o.cut_min)) json.field("cut_min", static_cast<double>(o.cut_min));
+        if (std::isfinite(o.breach_min)) json.field("breach_min", static_cast<double>(o.breach_min));
+        json.end_object();
+    }
+    json.end_array();
+    json.key("flights").begin_array();
+    for (const Flight& f : flights) {
+        json.begin_object().field("callsign", f.callsign).field("base", f.base).field("type", aircraft_type(f.kind).name);
+        json.key("drops").begin_array();
+        for (const AirDrop& d : f.drops) {
+            json.begin_object().field("order", d.order).field("start_min", d.start_min).field("end_min", d.end_min).end_object();
+        }
+        json.end_array();
+        json.key("scoops_min").begin_array();
+        for (const Waypoint& w : f.track) {
+            if (w.phase == FlightPhase::Scoop) json.value(w.time_min);
+        }
+        json.end_array().end_object();
+    }
+    json.end_array();
     json.key("summary").begin_object().field("burned_cells", static_cast<int64_t>(result.cells.size()))
         .field("area_ha", result.area_ha).field("max_ros_m_min", max_ros).field("max_flame_m", max_flame)
         .field("last_arrival_min", last_arrival).field("reached_grid_edge", result.reached_grid_edge)
@@ -246,6 +340,19 @@ int run_command(const Args& args) {
     std::printf("Vent : %s\n", terrain_wind ? "corrigé par le relief (atlas WindNinja)"
                                             : land.wind ? "uniforme (atlas ignoré)" : "uniforme (pas d'atlas des vents)");
     if (result.reached_grid_edge) std::printf("Attention : le feu a atteint le bord de la carte.\n");
+    for (size_t i = 0; i < firebreaks.size(); ++i) {
+        const Firebreak& f = firebreaks[i];
+        const LineOutcome& o = result.lines[i];
+        std::printf("Pare-feu %zu : %.1f km, %.0f m de large (tient jusqu'à %.1f m de flammes), %d engin(s), de %.1f h à %.1f h",
+                    i + 1, f.length_m / 1000.0, f.order.width_m, f.holds_flame_m, f.order.engines, f.start_min / 60.0, f.finish_min / 60.0);
+        if (std::isfinite(o.cut_min)) std::printf(", chantier atteint par le feu à %.1f h", o.cut_min / 60.0);
+        if (std::isfinite(o.breach_min)) std::printf(", franchi à %.1f h", o.breach_min / 60.0);
+        std::printf("\n");
+    }
+    for (const Flight& f : flights) {
+        std::printf("%s (%s) : %zu largage(s), de %.1f h à %.1f h\n", f.callsign.c_str(), aircraft_type(f.kind).name, f.drops.size(),
+                    f.drops.front().start_min / 60.0, f.drops.back().end_min / 60.0);
+    }
     std::printf("Calcul : %.0f ms (chargement de la carte : %.0f ms)\n", ms(t2 - t1), ms(t1 - t0));
     std::printf("Résultat : %s\n", out_dir.string().c_str());
     return 0;

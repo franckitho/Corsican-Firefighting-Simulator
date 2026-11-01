@@ -19,7 +19,8 @@ public class FireSim : ModuleRules
 		bEnableExceptions = true;
 
 		PublicDependencyModuleNames.AddRange(new[] { "Core", "CoreUObject", "Engine", "InputCore", "CesiumRuntime" });
-		// Slate : panneau de réglage affiché en jeu ; HTTP : météo réelle téléchargée sur Open-Meteo
-		PrivateDependencyModuleNames.AddRange(new[] { "Json", "Slate", "SlateCore", "HTTP" });
+		// Slate : panneau de réglage affiché en jeu ; HTTP : météo réelle téléchargée sur Open-Meteo ;
+		// ProceduralMeshComponent : avions modelés par le code
+		PrivateDependencyModuleNames.AddRange(new[] { "Json", "Slate", "SlateCore", "HTTP", "ProceduralMeshComponent" });
 	}
 }
